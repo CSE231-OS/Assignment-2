@@ -102,8 +102,6 @@ void shell_loop()
     int *offsets = malloc(sizeof(int *)*128);
     int n;
     do {
-        memset(command, 0, sizeof(char *)*128);
-        memset(offsets, 0, sizeof(int *)*128);
         cwd = getcwd(NULL, 0);
         printf("\033[1m\033[33mgroup-28@shell\033[0m:\033[1m\033[35m%s\033[0m$ ", cwd);
         fgets(input, sizeof(char)*256, stdin);
@@ -114,6 +112,9 @@ void shell_loop()
         }
         shell_status = launch(command, n, offsets);
     } while (shell_status);
+    free(input);
+    free(command);
+    free(offsets);
 }
 
 int main()
