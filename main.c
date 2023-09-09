@@ -4,6 +4,42 @@
 #include <sys/wait.h>
 #include <stdlib.h>
 #include <string.h>
+#include <time.h>
+#include <signal.h>
+#define max_commands 128
+
+int command_count = 0;
+int command_index = 0;
+char *history[max_commands];
+
+void add_command_to_history(char *input){
+    if (command_count != 0) {
+        if (strcmp(history[(command_index - 1)%max_commands], input) == 0) return;
+    }
+    if (command_index >= max_commands){
+        command_index %= max_commands;
+        free(history[command_index]);
+    }
+    history[command_index++] = strdup(input);
+    ++command_count;
+}
+
+void print_history(){
+    if (command_count == command_index){
+        for (int ind = 0; ind < command_count; ind++){
+            printf("%d %s\n", ind + 1, history[ind]);
+        }
+    } else {
+        for (int ind = command_index + 1; ind <= command_index + max_commands; ind++){
+            printf("%d %s\n", ind - command_index, history[(ind%max_commands)]);
+        }
+    }
+}
+
+void signal_handler(int sig_num){
+    printf("1\n");
+    exit(0);
+}
 
 int create_process_and_run(char **command, int fds[2]){
     int shell_status = fork();
@@ -62,6 +98,7 @@ int read_user_input(char *input, char **command, int *n, int *offsets){
     int k = 0;  // Corresponds to each word
     int pipeOpen = 0;
     offsets[0] = 0;
+    add_command_to_history(input);
     for (int i = 0; (token = strsep(&input, " ")) && pipeOpen != -1; i++) {
         for (int j = 0; (subtoken = strsep(&token, "|")); j++) {
             if (j >= 1) {
@@ -101,12 +138,17 @@ void shell_loop()
     char *cwd;
     int *offsets = malloc(sizeof(int *)*128);
     int n;
+    clock_t start, end, program_start;
+    program_start = clock();
+    signal(SIGINT, signal_handler);
     do {
         cwd = getcwd(NULL, 0);
         printf("\033[1m\033[33mgroup-28@shell\033[0m:\033[1m\033[35m%s\033[0m$ ", cwd);
         fgets(input, sizeof(char)*256, stdin);
         input[strlen(input)-1] = '\0';
+        if (input[0] == '\0') continue;
         int valid = read_user_input(input, command, &n, offsets);
+        if (strcmp(input, "history") == 0) {print_history(); continue;}
         if (!valid) {
             continue;
         }
