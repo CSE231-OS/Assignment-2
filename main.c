@@ -79,7 +79,7 @@ void display_details(){
                 printf("%d ", details[i].pid_list[j]);
             }
             printf("\nStart Time: %s", ctime(&details[i].start_time));
-            printf("Execution Time: %f\n\n", details[i].execution_time);
+            printf("Execution Time: %.3f ms\n\n", details[i].execution_time);
         }
     } else {
         for (int ind = details_index + 1; ind <= details_index + max_commands; ind++){
@@ -91,7 +91,7 @@ void display_details(){
                 printf("%d ", details[i].pid_list[j]);
             }
             printf("\nStart Time: %s", ctime(&details[i].start_time));
-            printf("Execution Time: %f\n\n", details[i].execution_time);
+            printf("Execution Time: %.3f ms\n\n", details[i].execution_time);
         }
     }
 }
@@ -245,23 +245,25 @@ void shell_loop()
     int *offsets = malloc(sizeof(int *)*128);
     int n;
     time_t now;
+    struct timespec t1, t2;
+    double elapsedTime;
     signal(SIGINT, terminator);
     do {
         cwd = getcwd(NULL, 0);
         printf("\033[1m\033[33mgroup-28@shell\033[0m:\033[1m\033[35m%s\033[0m$ ", cwd);
         fgets(input, sizeof(char)*256, stdin);
         time(&now);
-        clock_t start = clock();
         input[strlen(input)-1] = '\0';
         add_details(input, now);
         if (input[0] == '\0') continue;
         int valid = read_user_input(input, command, &n, offsets);
-        if (!valid) {
-            continue;
+        clock_gettime(CLOCK_MONOTONIC, &t1);
+        if (valid) {
+            shell_status = launch(command, n, offsets);
         }
-        shell_status = launch(command, n, offsets);
-        clock_t end = clock();
-        add_execution_time((double)(end - start) / CLOCKS_PER_SEC);
+        clock_gettime(CLOCK_MONOTONIC, &t2);
+        elapsedTime = (t2.tv_sec - t1.tv_sec) * 1000.0 + (t2.tv_nsec - t1.tv_nsec) / 1000000.0;
+        add_execution_time(elapsedTime);
     } while (shell_status);
     free(input);
     free(command);
