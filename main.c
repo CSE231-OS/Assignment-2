@@ -11,6 +11,23 @@ int create_process_and_run(char **command, int fds[2]){
         perror("Failed fork");
         exit(0);
     } else if (shell_status == 0){
+        int background = 0;
+        int i = 0;
+        while (command[i] != NULL)
+            i++;
+        background = strcmp(command[i-1], "&") == 0;
+        if (background) {
+            command[i-1] = NULL;
+            int status = fork();
+            if (status < 0) {
+                perror("Unable to spawn grandchild for background process");
+                exit(0);
+            } else if (status > 0) {
+                _exit(0);  // Pass responsiblity to init
+            }/*else {
+                // Continue execution
+            }*/
+        }
         if (fds != NULL) {
             close(fds[0]);
             dup2(fds[1], STDOUT_FILENO);
@@ -25,35 +42,29 @@ int create_process_and_run(char **command, int fds[2]){
             printf("Abnormal termination of %d\n", pid);
         }
     }
+
     return shell_status;
 }
 
 int launch(char **command, int n, int *offsets){
-    // Shell's input stream should not be affected by piping
-    if (fork() == 0) {
-        if (n == 1) {
-            // No need to redirect stdout
-            return create_process_and_run(command + offsets[0], NULL);
-        } else {
-            int fds[2];
-            pipe(fds);
-
-            create_process_and_run(command + offsets[0], fds);
-
+    int fds[2];
+    int old_stdin = dup(STDIN_FILENO), old_stdout = dup(STDOUT_FILENO);
+    int i = 0;
+    int status;
+    while (i != n) {
+        pipe(fds);
+        if (i == n-1) {
             close(fds[1]);
-            dup2(fds[0], STDIN_FILENO);
-            int status;
-            wait(&status);
-            if (status != 0) {
-                fprintf(stderr, "Stopping pipe\n");
-                exit(0);
-            }
-            launch(command, n-1, offsets+1);
+            fds[1] = old_stdout;
         }
-        exit(0);
-    } else {
-        wait(NULL);
+        create_process_and_run(command + offsets[i], fds);
+        close(fds[1]);
+        dup2(fds[0], STDIN_FILENO);
+        close(fds[0]);
+        i++;
     }
+    dup2(old_stdin, STDIN_FILENO);
+    dup2(old_stdout, STDOUT_FILENO);
 }
 
 int read_user_input(char *input, char **command, int *n, int *offsets){
