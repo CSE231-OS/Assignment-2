@@ -1,0 +1,8 @@
+This line is repeated 3 times
+This line is repeated 3 times
+This line is repeated 3 times
+This line is the fourth line
+This line is repeated separately
+This line is the sixth and seventh line
+This line is the sixth and seventh line
+This line is repeated separately
