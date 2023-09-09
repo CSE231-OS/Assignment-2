@@ -163,7 +163,7 @@ int create_process_and_run(char **command, int fds[2]){
     } else {
         int ret;
         int pid = wait(&ret);
-        add_pid(getpid());
+        add_pid(pid);
         if (!WIFEXITED(ret)){
             printf("Abnormal termination of %d\n", pid);
         }
