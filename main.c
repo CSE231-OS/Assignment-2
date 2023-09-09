@@ -12,6 +12,9 @@ int command_count = 0;
 int command_index = 0;
 char *history[max_commands];
 
+int launch(char **command, int n, int *offsets);
+int read_user_input(char *input, char **command, int *n, int *offsets);
+
 void add_command_to_history(char *input){
     if (command_count != 0) {
         if (strcmp(history[(command_index - 1)%max_commands], input) == 0) return;
@@ -62,6 +65,40 @@ int create_process_and_run(char **command, int fds[2]){
         if (fds != NULL) {
             close(fds[0]);
             dup2(fds[1], STDOUT_FILENO);
+        }
+        char *string;
+        if (strcmp(command[0], "history") == 0) {
+            if (command[1] != NULL) {
+                fprintf(stderr, "Usage: history\n");
+            } else {
+                print_history();
+            }
+            exit(0);
+        } else if ( (string = strrchr(command[0], '.')) != NULL ) {
+            if (strcmp(string, ".sh") == 0) {
+                if (command[1] != NULL) {
+                    fprintf(stderr, "Usage: file.sh");
+                    exit(0);
+                }
+                char *input = malloc(sizeof(char)*256);
+                char **subcommand = malloc(sizeof(char *)*128);
+                char *cwd;
+                int *offsets = malloc(sizeof(int *)*128);
+                int n;
+                FILE *file = fopen(command[0], "r");
+                while ( fgets(input, 256, file) != NULL) {
+                    if (input[strlen(input)-1] == '\n')
+                        input[strlen(input)-1] = '\0';
+                    
+                    int valid = read_user_input(input, subcommand, &n, offsets);
+                    if (valid)
+                        shell_status = launch(subcommand, n, offsets);
+                }
+                free(input);
+                free(subcommand);
+                free(offsets);
+                exit(0);
+            }
         }
         execvp(command[0], command);
         perror("Failed execution");
@@ -154,7 +191,6 @@ void shell_loop()
         if (!valid) {
             continue;
         }
-        if (strcmp(input, "history") == 0) {print_history(); continue;}
         shell_status = launch(command, n, offsets);
     } while (shell_status);
     free(input);
