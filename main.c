@@ -36,11 +36,6 @@ void print_history(){
     }
 }
 
-void signal_handler(int sig_num){
-    printf("1\n");
-    exit(0);
-}
-
 int create_process_and_run(char **command, int fds[2]){
     int shell_status = fork();
     if (shell_status < 0){
@@ -149,9 +144,6 @@ void shell_loop()
     char *cwd;
     int *offsets = malloc(sizeof(int *)*128);
     int n;
-    clock_t start, end, program_start;
-    program_start = clock();
-    signal(SIGINT, signal_handler);
     do {
         cwd = getcwd(NULL, 0);
         printf("\033[1m\033[33mgroup-28@shell\033[0m:\033[1m\033[35m%s\033[0m$ ", cwd);
@@ -159,10 +151,10 @@ void shell_loop()
         input[strlen(input)-1] = '\0';
         if (input[0] == '\0') continue;
         int valid = read_user_input(input, command, &n, offsets);
-        if (strcmp(input, "history") == 0) {print_history(); continue;}
         if (!valid) {
             continue;
         }
+        if (strcmp(input, "history") == 0) {print_history(); continue;}
         shell_status = launch(command, n, offsets);
     } while (shell_status);
     free(input);
