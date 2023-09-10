@@ -73,6 +73,7 @@ void add_execution_time(double execution){
 }
 
 void display_details(){
+    printf("\n");
     if (details_count == details_index){
         for (int i = 0; i <= details_count; i++){
             printf("Index: \t\t%d\n", i + 1);
