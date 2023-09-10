@@ -370,11 +370,12 @@ void shell_loop()
 {
     int shell_status;
     char *input = malloc(sizeof(char)*MAX_INPUT_LEN);
+    char *input_copy = malloc(sizeof(char)*MAX_INPUT_LEN);
     char **command = malloc(sizeof(char *)*MAX_INPUT_WORDS);
     char *cwd;
     int *offsets = malloc(sizeof(int *)*MAX_INPUT_WORDS);
     int *background = malloc(sizeof(int *)*MAX_INPUT_WORDS);
-    if (input == NULL || command == NULL || offsets == NULL || background == NULL){
+    if (input == NULL || command == NULL || offsets == NULL || background == NULL || input_copy == NULL){
         fprintf(stderr, "Failed Memory Allocation\n");
         return;
     }
@@ -389,10 +390,11 @@ void shell_loop()
         fgets(input, sizeof(char)*MAX_INPUT_LEN, stdin);
         time(&now);
         input[strlen(input)-1] = '\0';
+        input_copy = strdup(input);
         if (input[0] == '\0') continue;
-        add_details(input, now);
         if (check_input(input)) continue;
         int valid = read_user_input(input, command, &n, offsets, background);
+        add_details(input_copy, now);
         clock_gettime(CLOCK_MONOTONIC, &t1);
         if (valid) {
             shell_status = launch(command, n, offsets, background);
