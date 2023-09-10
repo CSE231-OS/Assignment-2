@@ -195,6 +195,8 @@ int launch(char **command, int n, int *offsets, int *background){
                     _exit(0);
                 }
             } else {
+                // Add pid of this background handler in details
+                add_pid(status);
                 wait(NULL);
                 while (background[i] == background[i+1]) {
                     // fprintf(stderr, "Skipping %s for background processor\n", command[i]);
@@ -361,7 +363,6 @@ int check_input(char *input){
 }
 
 void terminator(int sig_num){
-    printf("Terminator called\n");
     display_details();
     exit(0);
 }
