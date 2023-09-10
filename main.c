@@ -239,6 +239,22 @@ int read_user_input(char *input, char **command, int *n, int *offsets){
     }
 }
 
+int check_input(char *input){
+    for (int i = 0; input[i] != '\0'; i++){
+        if (input[i] == '\''){
+            fprintf(stderr, "\' present in command\n");
+            return 1;
+        } else if (input[i] == '\"'){
+            fprintf(stderr, "\" present in command\n");
+            return 1;
+        } else if (input[i] == '\\'){
+            fprintf(stderr, "\\ present in command\n");
+            return 1;
+        }
+    }
+    return 0;
+}
+
 void terminator(int sig_num){
     display_details();
     exit(0);
@@ -267,6 +283,7 @@ void shell_loop()
         time(&now);
         input[strlen(input)-1] = '\0';
         if (input[0] == '\0') continue;
+        if (check_input(input)) continue;
         add_details(input, now);
         int valid = read_user_input(input, command, &n, offsets);
         clock_gettime(CLOCK_MONOTONIC, &t1);
