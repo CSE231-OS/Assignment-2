@@ -387,7 +387,6 @@ void shell_loop()
         fgets(input, sizeof(char)*256, stdin);
         time(&now);
         input[strlen(input)-1] = '\0';
-        add_details(input, now);
         if (input[0] == '\0') continue;
         if (check_input(input)) continue;
         int valid = read_user_input(input, command, &n, offsets, background);
