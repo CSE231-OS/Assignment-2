@@ -73,7 +73,6 @@ void add_execution_time(double execution){
 }
 
 void display_details(){
-    printf("\n");
     if (details_count == details_index){
         for (int i = 0; i <= details_count; i++){
             printf("Index: \t\t%d\n", i + 1);
@@ -362,6 +361,7 @@ int check_input(char *input){
 }
 
 void terminator(int sig_num){
+    printf("Terminator called\n");
     display_details();
     exit(0);
 }
@@ -390,6 +390,7 @@ void shell_loop()
         time(&now);
         input[strlen(input)-1] = '\0';
         if (input[0] == '\0') continue;
+        add_details(input, now);
         if (check_input(input)) continue;
         int valid = read_user_input(input, command, &n, offsets, background);
         clock_gettime(CLOCK_MONOTONIC, &t1);
