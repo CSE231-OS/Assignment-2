@@ -6,11 +6,14 @@
 #include <string.h>
 #include <time.h>
 #include <signal.h>
-#define max_commands 128
+#define MAX_COMMANDS 128
+#define MAX_INPUT_LEN 256
+#define MAX_INPUT_WORDS 128
+
 
 int command_count = 0;
 int command_index = 0;
-char *history[max_commands];
+char *history[MAX_COMMANDS];
 
 
 int launch(char **command, int n, int *offsets, int *background);
@@ -18,10 +21,10 @@ int read_user_input(char *input, char **command, int *n, int *offsets, int *back
 
 void add_command_to_history(char *input){
     if (command_count != 0) {
-        if (strcmp(history[(command_index - 1)%max_commands], input) == 0) return;
+        if (strcmp(history[(command_index - 1)%MAX_COMMANDS], input) == 0) return;
     }
-    if (command_index >= max_commands){
-        command_index %= max_commands;
+    if (command_index >= MAX_COMMANDS){
+        command_index %= MAX_COMMANDS;
         free(history[command_index]);
     }
     history[command_index++] = strdup(input);
@@ -34,27 +37,27 @@ void print_history(){
             printf("%d %s\n", ind + 1, history[ind]);
         }
     } else {
-        for (int ind = command_index + 1; ind <= command_index + max_commands; ind++){
-            printf("%d %s\n", ind - command_index, history[(ind%max_commands)]);
+        for (int ind = command_index + 1; ind <= command_index + MAX_COMMANDS; ind++){
+            printf("%d %s\n", ind - command_index, history[(ind%MAX_COMMANDS)]);
         }
     }
 }
 
 struct Details{
     char *command;
-    int pid_list[128];
+    int pid_list[MAX_INPUT_WORDS];
     int pid_index;
     time_t start_time;
     double execution_time;
 };
 
-struct Details details[max_commands];
+struct Details details[MAX_COMMANDS];
 int details_index = -1;
 int details_count = -1;
 
 void add_details(char *input, time_t start){
     ++details_index;
-    if (details_index >= max_commands) details_index %= max_commands;
+    if (details_index >= MAX_COMMANDS) details_index %= MAX_COMMANDS;
     details[details_index].command = strdup(input);
     details[details_index].start_time = start;
     details[details_index].pid_index = 0;
@@ -83,8 +86,8 @@ void display_details(){
             printf("Execution Time: %.3f ms\n\n", details[i].execution_time);
         }
     } else {
-        for (int ind = details_index + 1; ind <= details_index + max_commands; ind++){
-            int i = ind%max_commands;
+        for (int ind = details_index + 1; ind <= details_index + MAX_COMMANDS; ind++){
+            int i = ind%MAX_COMMANDS;
             printf("Index: %d\n", ind - details_index);
             printf("Command: %s\n", details[i].command);
             printf("PID(s): ");
@@ -121,11 +124,11 @@ int create_process_and_run(char **command, int fds[2]){
                     fprintf(stderr, "Usage: file.sh");
                     exit(0);
                 }
-                char *input = malloc(sizeof(char)*256);
-                char **subcommand = malloc(sizeof(char *)*128);
+                char *input = malloc(sizeof(char)*MAX_INPUT_LEN);
+                char **subcommand = malloc(sizeof(char *)*MAX_INPUT_WORDS);
                 char *cwd;
-                int *offsets = malloc(sizeof(int *)*128);
-                int *background = malloc(sizeof(int *)*128);
+                int *offsets = malloc(sizeof(int *)*MAX_INPUT_WORDS);
+                int *background = malloc(sizeof(int *)*MAX_INPUT_WORDS);
                 if (input == NULL || subcommand == NULL || offsets == NULL || background == NULL){
                     fprintf(stderr, "Failed Memory Allocation\n");
                     exit(0);
@@ -136,7 +139,7 @@ int create_process_and_run(char **command, int fds[2]){
                     fprintf(stderr, "Failed File Open\n");
                     exit(0);
                 }
-                while ( fgets(input, 256, file) != NULL) {
+                while ( fgets(input, MAX_INPUT_LEN, file) != NULL) {
                     if (input[strlen(input)-1] == '\n')
                         input[strlen(input)-1] = '\0';
                     
@@ -154,9 +157,6 @@ int create_process_and_run(char **command, int fds[2]){
         execvp(command[0], command);
         fprintf(stderr, "Failed execution of '%s'", command[0]);
         perror(" command");
-        command[1] = NULL;
-        execvp("whereis", command);
-        perror("Failed whereis");
         exit(0);
     } else {
         int ret;
@@ -208,9 +208,11 @@ int launch(char **command, int n, int *offsets, int *background){
         // fprintf(stderr, "\tRunning %d's %s\n", background_handler, command[offsets[i]]);
 
         if (pipe(fds) == -1) {
-            perror("pipe failed");
+            close(fds[0]);
+            close(fds[1]);
             dup2(old_stdin, STDIN_FILENO);
             dup2(old_stdout, STDOUT_FILENO);
+            perror("pipe failed");
             exit(0);
         }
         if (i != 0 && background[i-1] != background[i]) {
@@ -251,7 +253,7 @@ int launch(char **command, int n, int *offsets, int *background){
  
 int read_user_input(char *input, char **command, int *n, int *offsets, int *background){
     char *token, *subtoken, *ssubtoken;
-    memset(background, 0, sizeof(int *)*128);
+    memset(background, 0, sizeof(int *)*MAX_INPUT_WORDS);
     *n = 1;
     int k = 0;  // Corresponds to each word
     int pipeOpen = 0;
@@ -367,11 +369,11 @@ void terminator(int sig_num){
 void shell_loop()
 {
     int shell_status;
-    char *input = malloc(sizeof(char)*256);
-    char **command = malloc(sizeof(char *)*128);
+    char *input = malloc(sizeof(char)*MAX_INPUT_LEN);
+    char **command = malloc(sizeof(char *)*MAX_INPUT_WORDS);
     char *cwd;
-    int *offsets = malloc(sizeof(int *)*128);
-    int *background = malloc(sizeof(int *)*128);
+    int *offsets = malloc(sizeof(int *)*MAX_INPUT_WORDS);
+    int *background = malloc(sizeof(int *)*MAX_INPUT_WORDS);
     if (input == NULL || command == NULL || offsets == NULL || background == NULL){
         fprintf(stderr, "Failed Memory Allocation\n");
         return;
@@ -384,7 +386,7 @@ void shell_loop()
     do {
         cwd = getcwd(NULL, 0);
         printf("\033[1m\033[33mgroup-28@shell\033[0m:\033[1m\033[35m%s\033[0m$ ", cwd);
-        fgets(input, sizeof(char)*256, stdin);
+        fgets(input, sizeof(char)*MAX_INPUT_LEN, stdin);
         time(&now);
         input[strlen(input)-1] = '\0';
         if (input[0] == '\0') continue;
