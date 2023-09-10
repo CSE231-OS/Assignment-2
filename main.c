@@ -141,12 +141,19 @@ int create_process_and_run(char **command, int fds[2]){
                 char **subcommand = malloc(sizeof(char *)*128);
                 char *cwd;
                 int *offsets = malloc(sizeof(int *)*128);
+                if (input == NULL || subcommand == NULL || offsets == NULL){
+                    fprintf(stderr, "Failed Memory Allocation\n");
+                    exit(0);
+                }
                 int n;
                 FILE *file = fopen(command[0], "r");
+                if (file == NULL){
+                    fprintf(stderr, "Failed File Open\n");
+                    exit(0);
+                }
                 while ( fgets(input, 256, file) != NULL) {
                     if (input[strlen(input)-1] == '\n')
                         input[strlen(input)-1] = '\0';
-                    
                     int valid = read_user_input(input, subcommand, &n, offsets);
                     if (valid)
                         shell_status = launch(subcommand, n, offsets);
@@ -154,6 +161,7 @@ int create_process_and_run(char **command, int fds[2]){
                 free(input);
                 free(subcommand);
                 free(offsets);
+                if (fclose(file) != 0) fprintf(stderr, "Error Closing File\n");
                 exit(0);
             }
         }
@@ -243,6 +251,10 @@ void shell_loop()
     char **command = malloc(sizeof(char *)*128);
     char *cwd;
     int *offsets = malloc(sizeof(int *)*128);
+    if (input == NULL || command == NULL || offsets == NULL){
+        fprintf(stderr, "Failed Memory Allocation\n");
+        return;
+    }
     int n;
     time_t now;
     struct timespec t1, t2;
@@ -254,8 +266,8 @@ void shell_loop()
         fgets(input, sizeof(char)*256, stdin);
         time(&now);
         input[strlen(input)-1] = '\0';
-        add_details(input, now);
         if (input[0] == '\0') continue;
+        add_details(input, now);
         int valid = read_user_input(input, command, &n, offsets);
         clock_gettime(CLOCK_MONOTONIC, &t1);
         if (valid) {
