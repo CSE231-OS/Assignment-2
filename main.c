@@ -12,8 +12,9 @@ int command_count = 0;
 int command_index = 0;
 char *history[max_commands];
 
-int launch(char **command, int n, int *offsets);
-int read_user_input(char *input, char **command, int *n, int *offsets);
+
+int launch(char **command, int n, int *offsets, int *background);
+int read_user_input(char *input, char **command, int *n, int *offsets, int *background);
 
 void add_command_to_history(char *input){
     if (command_count != 0) {
@@ -72,13 +73,13 @@ void display_details(){
     printf("\n");
     if (details_count == details_index){
         for (int i = 0; i <= details_count; i++){
-            printf("Index: %d\n", i + 1);
-            printf("Command: %s\n", details[i].command);
-            printf("PID(s): ");
+            printf("Index: \t\t%d\n", i + 1);
+            printf("Command: \t%s\n", details[i].command);
+            printf("PID(s): \t");
             for (int j = 0; j < details[i].pid_index; j++){
                 printf("%d ", details[i].pid_list[j]);
             }
-            printf("\nStart Time: %s", ctime(&details[i].start_time));
+            printf("\nStart Time: \t%s", ctime(&details[i].start_time));
             printf("Execution Time: %.3f ms\n\n", details[i].execution_time);
         }
     } else {
@@ -102,23 +103,6 @@ int create_process_and_run(char **command, int fds[2]){
         perror("Failed fork");
         exit(0);
     } else if (shell_status == 0){
-        int background = 0;
-        int i = 0;
-        while (command[i] != NULL)
-            i++;
-        background = strcmp(command[i-1], "&") == 0;
-        if (background) {
-            command[i-1] = NULL;
-            int status = fork();
-            if (status < 0) {
-                perror("Unable to spawn grandchild for background process");
-                exit(0);
-            } else if (status > 0) {
-                _exit(0);  // Pass responsiblity to init
-            }/*else {
-                // Continue execution
-            }*/
-        }
         if (fds != NULL) {
             close(fds[0]);
             dup2(fds[1], STDOUT_FILENO);
@@ -141,24 +125,38 @@ int create_process_and_run(char **command, int fds[2]){
                 char **subcommand = malloc(sizeof(char *)*128);
                 char *cwd;
                 int *offsets = malloc(sizeof(int *)*128);
+                int *background = malloc(sizeof(int *)*128);
+                if (input == NULL || subcommand == NULL || offsets == NULL || background == NULL){
+                    fprintf(stderr, "Failed Memory Allocation\n");
+                    exit(0);
+                }
                 int n;
                 FILE *file = fopen(command[0], "r");
+                if (file == NULL){
+                    fprintf(stderr, "Failed File Open\n");
+                    exit(0);
+                }
                 while ( fgets(input, 256, file) != NULL) {
                     if (input[strlen(input)-1] == '\n')
                         input[strlen(input)-1] = '\0';
                     
-                    int valid = read_user_input(input, subcommand, &n, offsets);
+                    int valid = read_user_input(input, subcommand, &n, offsets, background);
                     if (valid)
-                        shell_status = launch(subcommand, n, offsets);
+                        shell_status = launch(subcommand, n, offsets, background);
                 }
                 free(input);
                 free(subcommand);
                 free(offsets);
+                if (fclose(file) != 0) fprintf(stderr, "Error Closing File\n");
                 exit(0);
             }
         }
         execvp(command[0], command);
-        perror("Failed execution");
+        fprintf(stderr, "Failed execution of '%s'", command[0]);
+        perror(" command");
+        command[1] = NULL;
+        execvp("whereis", command);
+        perror("Failed whereis");
         exit(0);
     } else {
         int ret;
@@ -172,14 +170,55 @@ int create_process_and_run(char **command, int fds[2]){
     return shell_status;
 }
 
-int launch(char **command, int n, int *offsets){
+int launch(char **command, int n, int *offsets, int *background){
     int fds[2];
     int old_stdin = dup(STDIN_FILENO), old_stdout = dup(STDOUT_FILENO);
     int i = 0;
     int status;
-    while (i != n) {
-        pipe(fds);
-        if (i == n-1) {
+    int background_handler = 0;
+    while (i != n && (background_handler == 0 || background[i] == background_handler)) {
+        // fprintf(stderr, "%d: %s\n", i, command[offsets[i]]);
+        if ((i==0 && background[i] != 0) || (i !=0 && background[i-1] != background[i] && background[i] != 0)) {
+            // Create a disconnected process for this background branch
+            // fprintf(stderr, "Created %d handler starting for %s\n", i, command[offsets[i]]);
+            int status = fork();
+            if (status < 0) {
+                perror("Background fork failed");
+            } else if (status == 0) {
+                int status2 = fork();
+                if (status2 < 0) {
+                    perror("Background fork failed");
+                } else if (status2 == 0) {
+                    // This fork can now wait without repurcussions on the terminal
+                    background_handler = background[i];
+                    fprintf(stderr, "[%d] %d\n", background_handler, getpid());
+                } else {
+                    _exit(0);
+                }
+            } else {
+                wait(NULL);
+                while (background[i] == background[i+1]) {
+                    // fprintf(stderr, "Skipping %s for background processor\n", command[i]);
+                    i++;
+                }
+                i++;
+                continue;
+            }
+        }
+        // fprintf(stderr, "\tRunning %d's %s\n", background_handler, command[offsets[i]]);
+
+        if (pipe(fds) == -1) {
+            perror("pipe failed");
+            dup2(old_stdin, STDIN_FILENO);
+            dup2(old_stdout, STDOUT_FILENO);
+            exit(0);
+        }
+        if (i != 0 && background[i-1] != background[i]) {
+            // New batch of commands
+            dup2(old_stdin, STDIN_FILENO);
+        }
+        if (i == n-1 || (i < n-1 && background[i] != background[i+1]) ) {
+            // End of a batch of commands
             close(fds[1]);
             fds[1] = old_stdout;
         }
@@ -187,24 +226,49 @@ int launch(char **command, int n, int *offsets){
         close(fds[1]);
         dup2(fds[0], STDIN_FILENO);
         close(fds[0]);
+
         i++;
     }
     dup2(old_stdin, STDIN_FILENO);
     dup2(old_stdout, STDOUT_FILENO);
+    if (background_handler != 0) {
+        // Only for the background fork
+        printf("\n[%d]  Done\t\t", background_handler);
+        for (int i=0; i<n; i++) {
+            if (background[i] == background_handler) {
+                for (int j=offsets[i]; command[j] != NULL; j++) {
+                    printf("%s ", command[j]);
+                }
+                if (i < n-1 && background[i] == background[i+1]) {
+                    printf("| ");
+                }
+            }
+        }
+        printf("\n");
+        exit(0);
+    }
 }
-
-int read_user_input(char *input, char **command, int *n, int *offsets){
-    char *token, *subtoken;
+ 
+int read_user_input(char *input, char **command, int *n, int *offsets, int *background){
+    char *token, *subtoken, *ssubtoken;
+    memset(background, 0, sizeof(int *)*128);
     *n = 1;
     int k = 0;  // Corresponds to each word
     int pipeOpen = 0;
     offsets[0] = 0;
     add_command_to_history(input);
+    int bid = 1;
     for (int i = 0; (token = strsep(&input, " ")) && pipeOpen != -1; i++) {
-        for (int j = 0; (subtoken = strsep(&token, "|")); j++) {
+        // fprintf(stderr, "Picking apart '%s'\n", token);
+        for (int j = 0; (subtoken = strsep(&token, "|")) && pipeOpen != -1; j++) {
             if (j >= 1) {
                 if (pipeOpen == 1) {
                     fprintf(stderr, "Invalid command: empty pipe\n");
+                    pipeOpen = -1;
+                    break;
+                } else if (pipeOpen == 2) {
+                    // Pipe has no command to pipe from
+                    fprintf(stderr, "Invalid command: no command to pipe from\n");
                     pipeOpen = -1;
                     break;
                 }
@@ -214,8 +278,39 @@ int read_user_input(char *input, char **command, int *n, int *offsets){
                 pipeOpen = 1;
             }
             if (strlen(subtoken) > 0) {
-                pipeOpen = 0;
-                command[k++] = subtoken;
+                // Check for ampersands
+                // printf("Looking for &s in '%s'\n", subtoken);
+                for (int l = 0; (ssubtoken = strsep(&subtoken, "&")) && pipeOpen != -1; l++) {
+                    // printf("\t'%s'\n", ssubtoken);
+                    if (l >= 1) {
+                        if (pipeOpen == 1) {
+                            fprintf(stderr, "Invalid command: empty pipe\n");
+                            pipeOpen = -1;
+                            break;
+                        } else if (pipeOpen == 2) {
+                            fprintf(stderr, "Invalid command: no command to run in background\n");
+                            pipeOpen = -1;
+                            break;
+                        }
+                        // printf("\t\tMarking null\n");
+                        command[k++] = NULL;
+                        pipeOpen = 2;
+                        offsets[*n] = k;
+                        // Mark all offsets till now for background execution
+                        // Since && is not implemented, no non-background command
+                        // can occur before a background command
+                        for (int m=*n-1; m>=0 && background[m]==0; m--) {
+                            background[m] = bid;  // Mark background groups together
+                        }
+                        bid++;
+                        *n += 1;
+                    }
+                    if (strlen(ssubtoken) > 0) {
+                        pipeOpen = 0;
+                        command[k++] = ssubtoken;
+                        // printf("\t\tAdded command[%d] = %s\n", k-1, command[k-1]);
+                    }
+                }
             }
         }
     }
@@ -224,11 +319,44 @@ int read_user_input(char *input, char **command, int *n, int *offsets){
         pipeOpen = -1;
     }
     command[k] = NULL;
+    if (command[k-1] == NULL) {
+        // A terminating & has an extra command it thought would come after 
+        *n -= 1;
+    }
+    // printf("command = ");
+    // for (int i=0; i<10; i++) {
+    //     printf("'%s', ", command[i]);
+    // }
+    // printf("\noffset = ");
+    // for (int i=0; i<*n; i++) {
+    //     printf("%d, ", offsets[i]);
+    // }
+    // printf("background = ");
+    // for (int i=0; i<*n; i++) {
+    //     printf("%d, ", background[i]);
+    // }
+    // printf("\n---------------------\n");
     if (pipeOpen == -1) {
         return 0;
     } else {
         return 1;
     }
+}
+
+int check_input(char *input){
+    for (int i = 0; input[i] != '\0'; i++){
+        if (input[i] == '\''){
+            fprintf(stderr, "\' present in command\n");
+            return 1;
+        } else if (input[i] == '\"'){
+            fprintf(stderr, "\" present in command\n");
+            return 1;
+        } else if (input[i] == '\\'){
+            fprintf(stderr, "\\ present in command\n");
+            return 1;
+        }
+    }
+    return 0;
 }
 
 void terminator(int sig_num){
@@ -243,6 +371,11 @@ void shell_loop()
     char **command = malloc(sizeof(char *)*128);
     char *cwd;
     int *offsets = malloc(sizeof(int *)*128);
+    int *background = malloc(sizeof(int *)*128);
+    if (input == NULL || command == NULL || offsets == NULL || background == NULL){
+        fprintf(stderr, "Failed Memory Allocation\n");
+        return;
+    }
     int n;
     time_t now;
     struct timespec t1, t2;
@@ -256,10 +389,11 @@ void shell_loop()
         input[strlen(input)-1] = '\0';
         add_details(input, now);
         if (input[0] == '\0') continue;
-        int valid = read_user_input(input, command, &n, offsets);
+        if (check_input(input)) continue;
+        int valid = read_user_input(input, command, &n, offsets, background);
         clock_gettime(CLOCK_MONOTONIC, &t1);
         if (valid) {
-            shell_status = launch(command, n, offsets);
+            shell_status = launch(command, n, offsets, background);
         }
         clock_gettime(CLOCK_MONOTONIC, &t2);
         elapsedTime = (t2.tv_sec - t1.tv_sec) * 1000.0 + (t2.tv_nsec - t1.tv_nsec) / 1000000.0;
